@@ -6,85 +6,81 @@
 #include <algorithm>
 #include <cmath>
 using namespace std;
+using namespace std::string_literals;
 
-// Representamos el tablero como un string de 9 caracteres (más eficiente para hash)
 using State = string;
+const State GOAL = "123804765";  // 1 2 3 \ 8 0 4 \ 7 6 5
 
-// Posición objetivo (como en la Fig. 2 del enunciado)
-const State GOAL = "123804765";  // 1 2 3
-                                 // 8 0 4
-                                 // 7 6 5
-
-// Direcciones: arriba, abajo, izquierda, derecha
 int dx[4] = {-1, 1, 0, 0};
 int dy[4] = {0, 0, -1, 1};
 
-// Convierte posición (x,y) a índice en el string (0-8)
 int posToIndex(int x, int y) { return x * 3 + y; }
 
-// Heurística: distancia de Manhattan
+// ------------------ IMPRESIÓN BONITA ------------------
+void printState(const State& s) {
+    cout << "+---+---+---+\n";
+    for (int i = 0; i < 9; ++i) {
+        cout << "| ";
+        if (s[i] == '0')
+            cout << " ";
+        else
+            cout << s[i];
+        cout << " ";
+        if (i % 3 == 2) {
+            cout << "|\n";
+            cout << "+---+---+---+\n";
+        }
+    }
+    cout << "\n";
+}
+// -----------------------------------------------------
+
 int heuristic(const State& s) {
     int dist = 0;
     for (int i = 0; i < 9; ++i) {
-        if (s[i] == '0') continue;           // el vacío no cuenta
-        int value = s[i] - '0';
-        int goalX = (value == 0) ? 1 : (value - 1) / 3;  // ajustamos porque 0 está en (1,1)
-        int goalY = (value == 0) ? 1 : (value - 1) % 3;
-        if (value == 0) { goalX = 1; goalY = 1; }  // posición del 0 en GOAL
-        
-        int currX = i / 3;
-        int currY = i % 3;
-        dist += abs(currX - goalX) + abs(currY - goalY);
+        if (s[i] == '0') continue;
+        int val = s[i] - '0';
+        int target_x = (val - 1) / 3;
+        int target_y = (val - 1) % 3;
+        if (val == 0) { target_x = 1; target_y = 1; } // posición del 0 en GOAL
+
+        int cur_x = i / 3;
+        int cur_y = i % 3;
+        dist += abs(cur_x - target_x) + abs(cur_y - target_y);
     }
     return dist;
 }
 
-// Obtiene todos los vecinos posibles moviendo el 0
 vector<State> getNeighbors(const State& s) {
     vector<State> neighbors;
-    int pos = -1;
-    for (int i = 0; i < 9; ++i) if (s[i] == '0') { pos = i; break; }
-    
-    int x = pos / 3;
-    int y = pos % 3;
-    
+    int pos = s.find('0');
+    int x = pos / 3, y = pos % 3;
+
     for (int d = 0; d < 4; ++d) {
-        int nx = x + dx[d];
-        int ny = y + dy[d];
+        int nx = x + dx[d], ny = y + dy[d];
         if (nx >= 0 && nx < 3 && ny >= 0 && ny < 3) {
-            State next = s;
-            swap(next[pos], next[posToIndex(nx, ny)]);
-            neighbors.push_back(next);
+            State nxt = s;
+            swap(nxt[pos], nxt[posToIndex(nx, ny)]);
+            neighbors.push_back(nxt);
         }
     }
     return neighbors;
 }
 
-// Reconstruye el camino desde el padre
-vector<State> reconstructPath(unordered_map<State, State>& parent, State current) {
+vector<State> reconstructPath(unordered_map<State, State>& parent, State curr) {
     vector<State> path;
-    while (current != parent[current]) {
-        path.push_back(current);
-        current = parent[current];
+    while (curr != parent[curr]) {
+        path.push_back(curr);
+        curr = parent[curr];
     }
-    path.push_back(current);  // estado inicial
+    path.push_back(curr);
     reverse(path.begin(), path.end());
     return path;
 }
 
-// Imprime bonito un estado
-void printState(const State& s) {
-    for (int i = 0; i < 9; ++i) {
-        cout << " " << (s[i] == '0' ? ' ' : s[i]);
-        if (i % 3 == 2) cout << "\n";
-    }
-    cout << "\n";
-}
-
-// Algoritmo A*
 bool solvePuzzle(const State& start) {
     if (start == GOAL) {
-        cout << "¡Ya está resuelto!\n";
+        cout << "El puzzle ya está resuelto!\n";
         printState(start);
         return true;
     }
@@ -94,73 +90,76 @@ bool solvePuzzle(const State& start) {
     };
     priority_queue<pair<int, State>, vector<pair<int, State>>, decltype(cmp)> pq(cmp);
 
-    unordered_map<State, int> gScore;
+    unordered_map<State, int> g;
     unordered_map<State, State> parent;
-    unordered_map<State, int> fScore;
+    unordered_map<State, int> f;
 
-    gScore[start] = 0;
+    g[start] = 0;
     parent[start] = start;
-    fScore[start] = heuristic(start);
-    pq.push({fScore[start], start});
+    f[start] = heuristic(start);
+    pq.push({f[start], start});
 
+    int nodos = 0;
     while (!pq.empty()) {
-        State current = pq.top().second;
-        pq.pop();
+        State curr = pq.top().second; pq.pop();
+        nodos++;
 
-        if (current == GOAL) {
-            cout << "¡Solución encontrada en " << gScore[current] << " movimientos!\n\n";
-            vector<State> path = reconstructPath(parent, current);
-            for (int i = 0; i < path.size(); ++i) {
+        if (curr == "123804765"s) {
+            cout << "SOLUCION ENCONTRADA en " << g[curr] << " movimientos (" << nodos << " nodos explorados)\n\n";
+            vector<State> camino = reconstructPath(parent, curr);
+            for (int i = 0; i < camino.size(); ++i) {
                 cout << "Paso " << i << ":\n";
-                printState(path[i]);
+                printState(camino[i]);
+                if (i < camino.size()-1) {
+                    cout << "   ↓\n";
+                }
             }
             return true;
         }
 
-        for (const State& neighbor : getNeighbors(current)) {
-            int tentative_g = gScore[current] + 1;
-
-            if (gScore.find(neighbor) == gScore.end() || tentative_g < gScore[neighbor]) {
-                parent[neighbor] = current;
-                gScore[neighbor] = tentative_g;
-                fScore[neighbor] = tentative_g + heuristic(neighbor);
-                pq.push({fScore[neighbor], neighbor});
+        for (const State& vec : getNeighbors(curr)) {
+            int tg = g[curr] + 1;
+            if (g.find(vec) == g.end() || tg < g[vec]) {
+                parent[vec] = curr;
+                g[vec] = tg;
+                f[vec] = tg + heuristic(vec);
+                pq.push({f[vec], vec});
             }
         }
     }
-
-    cout << "No tiene solución (aunque con 8-puzzle siempre debería tenerla si es paridad correcta).\n";
+    cout << "No hay solución.\n";
     return false;
 }
 
 int main() {
-    cout << "=== Resolutor de 8-Puzzle (3x3) ===\n";
-    cout << "Ingresa el tablero inicial fila por fila (9 números del 0 al 8, sin repetir)\n";
-    cout << "Usa 0 para la casilla vacía. Ejemplo para el estado inicial de tu imagen:\n";
-    cout << "5 7 2 4 1 0 3 8 6\n\n-> ";
+    cout << "=====================================\n";
+    cout << "   RESOLVEDOR DE 8-PUZZLE (3x3)\n";
+    cout << "=====================================\n\n";
+    cout << "Ingresa los 9 numeros (0 = espacio vacio) separados por espacios o enter:\n";
+    cout << "Ejemplo: 5 7 2 4 1 0 3 8 6\n\n> ";
 
-    State start = "";
-    vector<int> nums;
-    int x;
-    while (nums.size() < 9 && cin >> x) {
-        nums.push_back(x);
+    State inicio = "";
+    vector<int> valores;
+    int num;
+    while (valores.size() < 9 && cin >> num) {
+        valores.push_back(num);
     }
 
-    // Validación básica
-    vector<bool> used(9, false);
-    for (int n : nums) {
-        if (n < 0 || n > 8 || used[n]) {
-            cout << "Error: números deben ser de 0 a 8 sin repetir.\n";
+    // Validacion
+    vector<bool> usado(9, false);
+    for (int v : valores) {
+        if (v < 0 || v > 8 || usado[v]) {
+            cout << "\nERROR: Deben ser los numeros del 0 al 8 sin repetir.\n";
             return 1;
         }
-        used[n] = true;
-        start += ('0' + n);
+        usado[v] = true;
+        inicio += ('0' + v);
     }
 
     cout << "\nTablero inicial:\n";
-    printState(start);
+    printState(inicio);
 
-    solvePuzzle(start);
+    solvePuzzle(inicio);
 
     return 0;
 }
