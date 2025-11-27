@@ -1,251 +1,166 @@
 #include <iostream>
 #include <vector>
 #include <queue>
-#include <unordered_set>
+#include <unordered_map>
+#include <string>
 #include <algorithm>
 #include <cmath>
-#include <memory>
-
 using namespace std;
 
-// Representación del estado del puzzle
-struct NodoPuzzle {
-    vector<vector<int>> tablero;
-    int fila_vacia, columna_vacia;
-    int costo_real; // costo acumulado (g)
-    int valor_heuristico; // valor heurístico (h)
-    string secuencia_movimientos;
-    shared_ptr<NodoPuzzle> nodo_padre;
-    
-    NodoPuzzle(vector<vector<int>> tab, int fv, int cv, int cr, int vh, string sm, shared_ptr<NodoPuzzle> np)
-        : tablero(tab), fila_vacia(fv), columna_vacia(cv), costo_real(cr), valor_heuristico(vh), secuencia_movimientos(sm), nodo_padre(np) {}
-    
-    // Función para calcular el costo total f = g + h
-    int costoTotal() const {
-        return costo_real + valor_heuristico;
-    }
-    
-    // Operador para comparar nodos (para la cola de prioridad)
-    bool operator>(const NodoPuzzle& otro) const {
-        return costoTotal() > otro.costoTotal();
-    }
-};
+// Representamos el tablero como un string de 9 caracteres (más eficiente para hash)
+using State = string;
 
-// Función para calcular la distancia Manhattan
-int calcularDistanciaManhattan(const vector<vector<int>>& tablero) {
-    int distancia_total = 0;
-    vector<pair<int, int>> posiciones_objetivo = {
-        {0, 0}, {0, 1}, {0, 2},
-        {1, 0}, {1, 1}, {1, 2},
-        {2, 0}, {2, 1}, {2, 2}
+// Posición objetivo (como en la Fig. 2 del enunciado)
+const State GOAL = "123804765";  // 1 2 3
+                                 // 8 0 4
+                                 // 7 6 5
+
+// Direcciones: arriba, abajo, izquierda, derecha
+int dx[4] = {-1, 1, 0, 0};
+int dy[4] = {0, 0, -1, 1};
+
+// Convierte posición (x,y) a índice en el string (0-8)
+int posToIndex(int x, int y) { return x * 3 + y; }
+
+// Heurística: distancia de Manhattan
+int heuristic(const State& s) {
+    int dist = 0;
+    for (int i = 0; i < 9; ++i) {
+        if (s[i] == '0') continue;           // el vacío no cuenta
+        int value = s[i] - '0';
+        int goalX = (value == 0) ? 1 : (value - 1) / 3;  // ajustamos porque 0 está en (1,1)
+        int goalY = (value == 0) ? 1 : (value - 1) % 3;
+        if (value == 0) { goalX = 1; goalY = 1; }  // posición del 0 en GOAL
+        
+        int currX = i / 3;
+        int currY = i % 3;
+        dist += abs(currX - goalX) + abs(currY - goalY);
+    }
+    return dist;
+}
+
+// Obtiene todos los vecinos posibles moviendo el 0
+vector<State> getNeighbors(const State& s) {
+    vector<State> neighbors;
+    int pos = -1;
+    for (int i = 0; i < 9; ++i) if (s[i] == '0') { pos = i; break; }
+    
+    int x = pos / 3;
+    int y = pos % 3;
+    
+    for (int d = 0; d < 4; ++d) {
+        int nx = x + dx[d];
+        int ny = y + dy[d];
+        if (nx >= 0 && nx < 3 && ny >= 0 && ny < 3) {
+            State next = s;
+            swap(next[pos], next[posToIndex(nx, ny)]);
+            neighbors.push_back(next);
+        }
+    }
+    return neighbors;
+}
+
+// Reconstruye el camino desde el padre
+vector<State> reconstructPath(unordered_map<State, State>& parent, State current) {
+    vector<State> path;
+    while (current != parent[current]) {
+        path.push_back(current);
+        current = parent[current];
+    }
+    path.push_back(current);  // estado inicial
+    reverse(path.begin(), path.end());
+    return path;
+}
+
+// Imprime bonito un estado
+void printState(const State& s) {
+    for (int i = 0; i < 9; ++i) {
+        cout << " " << (s[i] == '0' ? ' ' : s[i]);
+        if (i % 3 == 2) cout << "\n";
+    }
+    cout << "\n";
+}
+
+// Algoritmo A*
+bool solvePuzzle(const State& start) {
+    if (start == GOAL) {
+        cout << "¡Ya está resuelto!\n";
+        printState(start);
+        return true;
+    }
+
+    auto cmp = [](const pair<int, State>& a, const pair<int, State>& b) {
+        return a.first > b.first;
     };
-    
-    for (int fila = 0; fila < 3; fila++) {
-        for (int columna = 0; columna < 3; columna++) {
-            int valor_casilla = tablero[fila][columna];
-            if (valor_casilla != 0) { // ignorar el espacio vacío
-                auto pos_objetivo = posiciones_objetivo[valor_casilla - 1];
-                distancia_total += abs(fila - pos_objetivo.first) + abs(columna - pos_objetivo.second);
+    priority_queue<pair<int, State>, vector<pair<int, State>>, decltype(cmp)> pq(cmp);
+
+    unordered_map<State, int> gScore;
+    unordered_map<State, State> parent;
+    unordered_map<State, int> fScore;
+
+    gScore[start] = 0;
+    parent[start] = start;
+    fScore[start] = heuristic(start);
+    pq.push({fScore[start], start});
+
+    while (!pq.empty()) {
+        State current = pq.top().second;
+        pq.pop();
+
+        if (current == GOAL) {
+            cout << "¡Solución encontrada en " << gScore[current] << " movimientos!\n\n";
+            vector<State> path = reconstructPath(parent, current);
+            for (int i = 0; i < path.size(); ++i) {
+                cout << "Paso " << i << ":\n";
+                printState(path[i]);
+            }
+            return true;
+        }
+
+        for (const State& neighbor : getNeighbors(current)) {
+            int tentative_g = gScore[current] + 1;
+
+            if (gScore.find(neighbor) == gScore.end() || tentative_g < gScore[neighbor]) {
+                parent[neighbor] = current;
+                gScore[neighbor] = tentative_g;
+                fScore[neighbor] = tentative_g + heuristic(neighbor);
+                pq.push({fScore[neighbor], neighbor});
             }
         }
     }
-    return distancia_total;
-}
 
-// Función para convertir el tablero a string (para el hash)
-string tableroAString(const vector<vector<int>>& tablero) {
-    string resultado;
-    for (const auto& fila : tablero) {
-        for (int valor : fila) {
-            resultado += to_string(valor);
-        }
-    }
-    return resultado;
-}
-
-// Función para verificar si un estado es el estado objetivo
-bool esEstadoObjetivo(const vector<vector<int>>& tablero) {
-    vector<vector<int>> tablero_objetivo = {
-        {1, 2, 3},
-        {8, 0, 4},
-        {7, 6, 5}
-    };
-    return tablero == tablero_objetivo;
-}
-
-// Función para generar nodos sucesores
-vector<NodoPuzzle> generarSucesores(shared_ptr<NodoPuzzle> nodo_actual) {
-    vector<NodoPuzzle> lista_sucesores;
-    int fila_actual = nodo_actual->fila_vacia;
-    int columna_actual = nodo_actual->columna_vacia;
-    
-    // Movimientos posibles: arriba, derecha, abajo, izquierda
-    vector<pair<int, int>> direcciones = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}};
-    vector<string> nombres_direcciones = {"Arriba", "Derecha", "Abajo", "Izquierda"};
-    
-    for (int indice = 0; indice < 4; indice++) {
-        int nueva_fila = fila_actual + direcciones[indice].first;
-        int nueva_columna = columna_actual + direcciones[indice].second;
-        
-        // Verificar si el movimiento es válido
-        if (nueva_fila >= 0 && nueva_fila < 3 && nueva_columna >= 0 && nueva_columna < 3) {
-            // Crear nuevo tablero
-            vector<vector<int>> nuevo_tablero = nodo_actual->tablero;
-            swap(nuevo_tablero[fila_actual][columna_actual], nuevo_tablero[nueva_fila][nueva_columna]);
-            
-            // Calcular heurística
-            int heuristica = calcularDistanciaManhattan(nuevo_tablero);
-            
-            // Crear nuevo nodo
-            string nuevos_movimientos = nodo_actual->secuencia_movimientos;
-            if (!nuevos_movimientos.empty()) nuevos_movimientos += " -> ";
-            nuevos_movimientos += nombres_direcciones[indice];
-            
-            NodoPuzzle nuevo_nodo(nuevo_tablero, nueva_fila, nueva_columna, 
-                                nodo_actual->costo_real + 1, heuristica, 
-                                nuevos_movimientos, nodo_actual);
-            lista_sucesores.push_back(nuevo_nodo);
-        }
-    }
-    
-    return lista_sucesores;
-}
-
-// Función para imprimir el tablero
-void mostrarTablero(const vector<vector<int>>& tablero) {
-    cout << "+---+---+---+" << endl;
-    for (int fila = 0; fila < 3; fila++) {
-        cout << "|";
-        for (int columna = 0; columna < 3; columna++) {
-            if (tablero[fila][columna] == 0) {
-                cout << "   |";
-            } else {
-                cout << " " << tablero[fila][columna] << " |";
-            }
-        }
-        cout << endl << "+---+---+---+" << endl;
-    }
-}
-
-// Función principal para resolver el puzzle
-shared_ptr<NodoPuzzle> resolverPuzzle(const vector<vector<int>>& tablero_inicial) {
-    // Encontrar la posición del espacio vacío
-    int fila_vacia = -1, columna_vacia = -1;
-    for (int fila = 0; fila < 3; fila++) {
-        for (int columna = 0; columna < 3; columna++) {
-            if (tablero_inicial[fila][columna] == 0) {
-                fila_vacia = fila;
-                columna_vacia = columna;
-                break;
-            }
-        }
-    }
-    
-    // Nodo inicial
-    int heuristica_inicial = calcularDistanciaManhattan(tablero_inicial);
-    auto nodo_inicial = make_shared<NodoPuzzle>(tablero_inicial, fila_vacia, columna_vacia, 
-                                              0, heuristica_inicial, "", nullptr);
-    
-    // Cola de prioridad para A*
-    priority_queue<NodoPuzzle, vector<NodoPuzzle>, greater<NodoPuzzle>> cola_prioridad;
-    cola_prioridad.push(*nodo_inicial);
-    
-    // Conjunto para nodos visitados
-    unordered_set<string> nodos_visitados;
-    nodos_visitados.insert(tableroAString(tablero_inicial));
-    
-    while (!cola_prioridad.empty()) {
-        NodoPuzzle nodo_actual = cola_prioridad.top();
-        cola_prioridad.pop();
-        
-        // Verificar si es el estado objetivo
-        if (esEstadoObjetivo(nodo_actual.tablero)) {
-            return make_shared<NodoPuzzle>(nodo_actual);
-        }
-        
-        // Generar sucesores
-        auto ptr_nodo_actual = make_shared<NodoPuzzle>(nodo_actual);
-        vector<NodoPuzzle> sucesores = generarSucesores(ptr_nodo_actual);
-        
-        for (const NodoPuzzle& sucesor : sucesores) {
-            string clave_tablero = tableroAString(sucesor.tablero);
-            
-            // Si no hemos visitado este nodo
-            if (nodos_visitados.find(clave_tablero) == nodos_visitados.end()) {
-                nodos_visitados.insert(clave_tablero);
-                cola_prioridad.push(sucesor);
-            }
-        }
-    }
-    
-    return nullptr; // No se encontró solución
-}
-
-// Función para imprimir la solución completa
-void mostrarSolucion(shared_ptr<NodoPuzzle> solucion) {
-    if (!solucion) {
-        cout << "No se encontró solución para el puzzle." << endl;
-        return;
-    }
-    
-    // Recolectar todos los nodos de la solución
-    vector<shared_ptr<NodoPuzzle>> pasos_solucion;
-    auto nodo_actual = solucion;
-    while (nodo_actual != nullptr) {
-        pasos_solucion.push_back(nodo_actual);
-        nodo_actual = nodo_actual->nodo_padre;
-    }
-    reverse(pasos_solucion.begin(), pasos_solucion.end());
-    
-    cout << "\n=== SOLUCIÓN ENCONTRADA ===" << endl;
-    cout << "Número total de movimientos: " << pasos_solucion.size() - 1 << endl;
-    cout << "Secuencia de movimientos: " << solucion->secuencia_movimientos << endl;
-    cout << "\n=== PASO A PASO ===" << endl;
-    
-    for (size_t paso = 0; paso < pasos_solucion.size(); paso++) {
-        cout << "\nPaso " << paso << ":" << endl;
-        if (paso > 0) {
-            size_t pos_anterior = pasos_solucion[paso-1]->secuencia_movimientos.length();
-            cout << "Movimiento: " << pasos_solucion[paso]->secuencia_movimientos.substr(pos_anterior) << endl;
-        }
-        mostrarTablero(pasos_solucion[paso]->tablero);
-    }
-}
-
-// Función para leer el tablero inicial desde el usuario
-vector<vector<int>> leerTableroInicial() {
-    vector<vector<int>> tablero(3, vector<int>(3));
-    
-    cout << "=== CONFIGURACIÓN INICIAL DEL 8-PUZZLE ===" << endl;
-    cout << "Ingrese el tablero 3x3 (use 0 para el espacio vacío):" << endl;
-    
-    for (int fila = 0; fila < 3; fila++) {
-        cout << "Fila " << (fila + 1) << " (3 números separados por espacios): ";
-        for (int columna = 0; columna < 3; columna++) {
-            cin >> tablero[fila][columna];
-        }
-    }
-    
-    return tablero;
+    cout << "No tiene solución (aunque con 8-puzzle siempre debería tenerla si es paridad correcta).\n";
+    return false;
 }
 
 int main() {
-    cout << "RESOLVEDOR DEL 8-PUZZLE" << endl;
-    cout << "========================" << endl;
-    
-    // Leer configuración inicial
-    vector<vector<int>> tablero_inicial = leerTableroInicial();
-    
-    cout << "\nTablero inicial ingresado:" << endl;
-    mostrarTablero(tablero_inicial);
-    
-    cout << "\nResolviendo el puzzle..." << endl;
-    
-    // Resolver el puzzle
-    auto solucion = resolverPuzzle(tablero_inicial);
-    
-    // Mostrar la solución
-    mostrarSolucion(solucion);
-    
+    cout << "=== Resolutor de 8-Puzzle (3x3) ===\n";
+    cout << "Ingresa el tablero inicial fila por fila (9 números del 0 al 8, sin repetir)\n";
+    cout << "Usa 0 para la casilla vacía. Ejemplo para el estado inicial de tu imagen:\n";
+    cout << "5 7 2 4 1 0 3 8 6\n\n-> ";
+
+    State start = "";
+    vector<int> nums;
+    int x;
+    while (nums.size() < 9 && cin >> x) {
+        nums.push_back(x);
+    }
+
+    // Validación básica
+    vector<bool> used(9, false);
+    for (int n : nums) {
+        if (n < 0 || n > 8 || used[n]) {
+            cout << "Error: números deben ser de 0 a 8 sin repetir.\n";
+            return 1;
+        }
+        used[n] = true;
+        start += ('0' + n);
+    }
+
+    cout << "\nTablero inicial:\n";
+    printState(start);
+
+    solvePuzzle(start);
+
     return 0;
 }
