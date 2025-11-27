@@ -64,7 +64,7 @@ int heuristic(const State& s) {
 vector<State> getNeighbors(const State& s) {
     vector<State> neighbors;
 
-    int pos = s.find('0');
+    int pos = static_cast<int>(s.find('0'));
     int x = pos / 3, y = pos % 3;
 
     for (int d = 0; d < 4; ++d) {
@@ -104,9 +104,10 @@ bool esSoluble(const string& s) {
             v.push_back(c - '0');
 
     int inv = 0;
+    int n = static_cast<int>(v.size());
 
-    for (int i = 0; i < v.size(); i++)
-        for (int j = i + 1; j < v.size(); j++)
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++)
             if (v[i] > v[j])
                 inv++;
 
@@ -143,7 +144,7 @@ bool solvePuzzle(const State& start) {
 
             vector<State> path = reconstructPath(parent, curr);
 
-            for (int i = 0; i < path.size(); ++i) {
+            for (size_t i = 0; i < path.size(); ++i) {
                 cout << "Paso " << i << ":\n";
                 printState(path[i]);
                 if (i < path.size() - 1)
